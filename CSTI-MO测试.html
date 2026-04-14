@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSGO/CS2 终极人格测试</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Chosen Palette: CSGO Dark Theme (Slate/Gray, Neon Yellow/Orange accents) -->
+    <!-- Application Structure Plan: 
+         1. Landing Screen: Engaging intro to the test.
+         2. Quiz Area: Dynamic injection of 50 questions with progress tracking.
+         3. Result Dashboard: Calculates dominant trait, shows role description, and renders a Radar Chart of all playstyles.
+    -->
+    <!-- Visualization & Content Choices:
+         - Progress Bar (HTML/CSS): Shows test completion.
+         - Interactive Buttons: For answering 4-option questions.
+         - Radar Chart (Chart.js/Canvas): Best visualization for multi-dimensional gaming profiles (like "Hexagon stats").
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 500px; margin: 0 auto; height: 300px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        @media (max-width: 380px) {
+            .chart-container { height: 250px; }
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #eab308; border-radius: 4px; }
+        .option-btn { min-height: 56px; touch-action: manipulation; }
+        @media (max-width: 380px) {
+            .option-btn { min-height: 52px; font-size: 0.875rem; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col antialiased">
+
+    <!-- Header -->
+    <header class="bg-slate-950 border-b border-slate-800 p-4 text-center shadow-lg">
+        <h1 class="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 uppercase tracking-widest">
+            CS:GO / CS2 玩家人格鉴定器
+        </h1>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow flex items-center justify-center p-4 md:p-8">
+        <div id="app-container" class="w-full max-w-3xl bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden relative transition-all duration-300">
+            
+            <!-- 1. Start Screen -->
+            <div id="screen-start" class="p-8 md:p-12 text-center space-y-6">
+                <div class="text-6xl mb-4">🎮</div>
+                <h2 class="text-3xl font-bold text-white">你是哪种类型的 CSer？</h2>
+                <p class="text-slate-400 text-lg">包含 50 道真实游戏场景题，测出你是突破手、老六、战术大师</p>
+                <div class="pt-6">
+                    <button onclick="startQuiz()" class="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-4 px-10 rounded-full text-xl shadow-[0_0_15px_rgba(234,179,8,0.5)] transition-all transform hover:scale-105 active:scale-95">
+                        开始测试 (共50题)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Quiz Screen -->
+            <div id="screen-quiz" class="hidden flex flex-col h-full">
+                <!-- Progress -->
+                <div class="w-full bg-slate-950 h-2">
+                    <div id="progress-bar" class="bg-yellow-500 h-2 transition-all duration-300 w-0"></div>
+                </div>
+                <div class="p-6 md:p-10 flex-grow flex flex-col">
+                    <div class="flex justify-between items-center mb-6">
+                        <span id="question-counter" class="text-yellow-500 font-mono font-bold text-lg">1 / 50</span>
+                        <span class="text-slate-400 text-sm border border-slate-600 px-2 py-1 rounded">战斗情境</span>
+                    </div>
+                    
+                    <h3 id="question-text" class="text-xl md:text-2xl font-semibold mb-8 text-white leading-relaxed">
+                        加载中...
+                    </h3>
+
+                    <div id="options-container" class="space-y-3 mt-auto">
+                        <!-- Options injected via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Result Screen -->
+            <div id="screen-result" class="hidden p-6 md:p-10 text-center flex flex-col items-center">
+                <h2 class="text-xl text-slate-400 font-semibold mb-2">你的 CS 生涯鉴定报告</h2>
+                <div class="text-5xl my-2" id="result-icon">🏆</div>
+                <h1 id="result-title" class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-4 tracking-wide drop-shadow-md">
+                    <!-- Title injected -->
+                </h1>
+                
+                <p id="result-desc" class="text-slate-300 mb-8 max-w-xl mx-auto leading-relaxed text-lg bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                    <!-- Description injected -->
+                </p>
+
+                <!-- Chart Container Requirements applied -->
+                <div class="chart-container w-full bg-slate-950/50 rounded-xl p-4 border border-slate-700 mb-8">
+                    <canvas id="radarChart"></canvas>
+                </div>
+
+                <button onclick="location.reload()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-full transition-all">
+                    再测一次
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- JS Logic -->
+    <script>
+        // --- DATA STORAGE ---
+        const questionData = [
+            { q: "手枪局开始，你手里有800块钱，你会怎么花？", options: [
+                { t: "半甲起手，直接冲就完事了！", type: "aggressive" },
+                { t: "发把P250给大哥，自己起烟闪辅助。", type: "team" },
+                { t: "买个诱饵雷在出生点狂切刀，然后迷路了。", type: "piggy" },
+                { t: "默默买个消音USP/格洛克+护甲，找好预瞄位。", type: "steady" }
+            ]},
+            { q: "剩下1v3残局，C4掉在匪家，你作为T在A大：", options: [
+                { t: "保枪，直接找个下水道蹲着，下把再来。", type: "steady" },
+                { t: "静步摸警家，试图绕后一个一个抓单。", type: "lone" },
+                { t: "突然锁头连秒三个，队友直呼：你什么冠军？", type: "forsaken" },
+                { t: "端着狙击枪架死过点，杀一个够本。", type: "sniper" }
+            ]},
+            { q: "防守B区时，队友突然大喊“全来了！RUSH B！”：", options: [
+                { t: "立刻掏出P90/野牛，按住左键死顶B洞。", type: "pp19" },
+                { t: "迅速要闪光弹反清，并呼叫A区队友回防。", type: "tactical" },
+                { t: "掏出电击枪（电击器）躲在死角，电死一个血赚。", type: "troll" },
+                { t: "一慌张把燃烧弹砸在了自己脚下，被火烧死。", type: "piggy" }
+            ]},
+            { q: "队伍经济崩溃，全队只有2000块，你会起什么？", options: [
+                { t: "强起沙鹰，相信自己就是NiKo，一枪一个！", type: "aggressive" },
+                { t: "什么都不买，跟在队友后面捡破烂。", type: "steady" },
+                { t: "起个烟雾弹给队友封过点，打个佯攻。", type: "team" },
+                { t: "全能发挥，拿无甲格洛克也能打出精彩操作。", type: "all" }
+            ]},
+            { q: "作为CT，当你在中路面对敌方封上的过点烟时：", options: [
+                { t: "凭感觉随便穿了两枪，屏幕右上角跳出爆头击杀。", type: "forsaken" },
+                { t: "架一把大狙在烟雾边缘，等对面失误漏身位。", type: "sniper" },
+                { t: "从侧面绕过去，准备等他们进攻包点时背刺。", type: "lone" },
+                { t: "直接无视烟雾，端着吹风机冲进去干拉。", type: "pp19" }
+            ]},
+            { q: "你最喜欢的防守站位是：", options: [
+                { t: "永远顶在最前点，开局找人对枪。", type: "aggressive" },
+                { t: "各种冷门非预瞄位，让敌人防不胜防。", type: "tactical" },
+                { t: "主武器鸟狙/大狙，架死核心路口。", type: "sniper" },
+                { t: "躲在包点大箱子后面发抖，全图静音。", type: "piggy" }
+            ]},
+            { q: "开局倒计时，你在干什么？", options: [
+                { t: "跟队友商量默认战术和道具分配。", type: "team" },
+                { t: "拿刀疯狂划队友，或者对着墙喷漆跳跃。", type: "troll" },
+                { t: "检查自己的准星、灵敏度，进入全神贯注状态。", type: "all" },
+                { t: "疯狂按切枪键，结果不小心把枪扔到了地图外面。", type: "piggy" }
+            ]},
+            { q: "作为进攻方，成功下包后进入残局守包：", options: [
+                { t: "躲在最稳健的死角，看包不看人，拖时间。", type: "steady" },
+                { t: "主动前压找警对枪，把危险扼杀在摇篮里。", type: "aggressive" },
+                { t: "架一把大狙在死角，谁拆包我狙谁。", type: "sniper" },
+                { t: "突然隔着两道墙把正在静步回防的CT穿死了。", type: "forsaken" }
+            ]},
+            { q: "队友死后在语音里对你疯狂指指点点：", options: [
+                { t: "冷静分析他的信息，提取有用的报点。", type: "team" },
+                { t: "直接按住麦克风开始对线，或者放DJ音乐。", type: "troll" },
+                { t: "根本听不到，我已经在另一边单人摸穿了防线。", type: "lone" },
+                { t: "被吓得手抖，直接切出小刀被对面一枪打死。", type: "piggy" }
+            ]},
+            { q: "你的常用武器池是：", options: [
+                { t: "AK47 / M4A4，基本功扎实，点射扫射全能。", type: "all" },
+                { t: "AWP！AWP！只要有钱必定起大狙。", type: "sniper" },
+                { t: "P90、MP9、MAC-10，跑打是我的信仰。", type: "pp19" },
+                { t: "全甲，各种花式投掷物，枪无所谓。", type: "tactical" }
+            ]},
+            { q: "关于跑图和投掷物训练：", options: [
+                { t: "各大地图的瞬爆闪、VIP烟烂熟于心。", type: "tactical" },
+                { t: "跑什么图，见面就是干，枪法解决一切。", type: "aggressive" },
+                { t: "知道几个常用的，配合队友基本够用了。", type: "steady" },
+                { t: "每次想丢道具都会弹到墙上砸自己。", type: "piggy" }
+            ]},
+            { q: "在死斗模式（Deathmatch）热身时：", options: [
+                { t: "一直练沙鹰/AK单发爆头定位。", type: "all" },
+                { t: "只起大狙，练习瞬狙和甩狙。", type: "sniper" },
+                { t: "拿把电击枪到处跑，专门电别人的屁股。", type: "troll" },
+                { t: "出门就被秒，战绩 2-30，绝望退出。", type: "piggy" }
+            ]},
+            { q: "发现对面总是喜欢RUSH A大：", options: [
+                { t: "呼叫队友，开局直接给A大套餐（火+雷+闪）。", type: "tactical" },
+                { t: "在A大坑里躲好，等他们全进来再出去打背身。", type: "steady" },
+                { t: "自己直接拿吹风机反前压A大，以暴制暴。", type: "pp19" },
+                { t: "我不守A，我去B区发呆了，不管我的事。", type: "lone" }
+            ]},
+            { q: "队友在前面拉枪线白给，留你补枪：", options: [
+                { t: "瞬间拉出去，定位锁头，行云流水拿双杀。", type: "all" },
+                { t: "不补枪，回头就跑，只要我活着就是希望。", type: "steady" },
+                { t: "跟着冲出去，一顿泼水，同归于尽。", type: "aggressive" },
+                { t: "拉出去结果闪光弹刚好爆了，全白状态下被打死。", type: "piggy" }
+            ]},
+            { q: "游戏打到 14:14 关键局：", options: [
+                { t: "深呼吸，指挥队友打一波最稳的爆弹战术。", type: "team" },
+                { t: "不用慌，我的自瞄快捷键已经按下了。", type: "forsaken" },
+                { t: "心脏狂跳，躲在角落里连鼠标都快握不住了。", type: "piggy" },
+                { t: "摸透对面防守弱点，自己单摸去偷人。", type: "lone" }
+            ]},
+            { q: "当你手持大狙空枪后，面对冲过来的敌人：", options: [
+                { t: "立刻切出手枪，身法走位尝试反杀。", type: "sniper" },
+                { t: "直接转身逃跑，重新找掩体架枪。", type: "steady" },
+                { t: "掏出刀想跟他拼了！", type: "troll" },
+                { t: "站在原地发呆：“啊？我没打中吗？”", type: "piggy" }
+            ]},
+            { q: "进攻遇到对面死架的交叉火力：", options: [
+                { t: "直接干拉，用变态的预瞄把他们强行秒掉。", type: "forsaken" },
+                { t: "要队友给一颗过顶闪光，强行破点。", type: "team" },
+                { t: "换出冲锋枪，跳跃拉出身位一顿乱扫。", type: "pp19" },
+                { t: "等队友全死光了，自己再慢悠悠去保枪。", type: "lone" }
+            ]},
+            { q: "队友起了一把内格夫（大菠萝）在狂扫：", options: [
+                { t: "跑过去站在他的枪口下，让他痛失经济。", type: "troll" },
+                { t: "利用他的火力压制，自己从侧边摸出去。", type: "tactical" },
+                { t: "骂他别搞杂技，让他赶紧正常玩。", type: "team" },
+                { t: "跟他一起起内格夫，双人重机枪阵列！", type: "troll" } // intentionally duplicate type to balance
+            ]},
+            { q: "残局 1v1，你不知道敌人在哪：", options: [
+                { t: "假拆/假放包，逼对方露出身位对枪。", type: "tactical" },
+                { t: "各种身法跳跃看信息，全能应对。", type: "all" },
+                { t: "静步走到包点，结果被对面蹲坑的老六刀了。", type: "piggy" },
+                { t: "不管三七二十一，拿着P90全图跑着找。", type: "pp19" }
+            ]},
+            { q: "赛后看Demo（录像），你主要关注什么？", options: [
+                { t: "自己的爆头线、走位、道具失误在哪。", type: "all" },
+                { t: "看自己的高光时刻，欣赏自己的狙击。", type: "sniper" },
+                { t: "看对面那个人是不是开了透视！", type: "forsaken" },
+                { t: "什么是Demo？能吃吗？", type: "piggy" }
+            ]},
+            { q: "当你站在队伍最前面，遇到门后有脚步：", options: [
+                { t: "直接破门而入，先开枪再说！", type: "aggressive" },
+                { t: "退后两步，给颗火烧一烧。", type: "steady" },
+                { t: "跟队友打手势，让他拉我补枪。", type: "tactical" },
+                { t: "想穿门结果子弹打光了，正在换弹时门开了。", type: "piggy" }
+            ]},
+            { q: "作为指挥，你的风格是：", options: [
+                { t: "精确到秒的道具配合，严格执行战术。", type: "team" },
+                { t: "“你们去A吸引，我带包去B。”", type: "lone" },
+                { t: "“全买P90！Rush B！不要停！”", type: "pp19" },
+                { t: "“大家自由发挥，我挂机一会。”", type: "troll" }
+            ]},
+            { q: "地图上出现了鸡：", options: [
+                { t: "专业杀鸡，一枪一个，绝不留活口。", type: "troll" },
+                { t: "无视它，保持专注看好自己的点位。", type: "steady" },
+                { t: "把鸡当掩体，祈祷它能挡住一颗子弹。", type: "tactical" },
+                { t: "追着鸡跑了一整局，甚至忘了下包。", type: "piggy" }
+            ]},
+            { q: "你的鼠标灵敏度（eDPI）属于：", options: [
+                { t: "超低灵敏度，手臂流，追求极致定位。", type: "all" },
+                { t: "极高灵敏度，手腕流，转身跟陀螺一样。", type: "forsaken" },
+                { t: "适中，方便打狙甩枪。", type: "sniper" },
+                { t: "不知道，我在网吧随便用个鼠标玩的。", type: "piggy" }
+            ]},
+            { q: "对面连续赢了3局，经济极好：", options: [
+                { t: "安抚队友情绪：“没事，我们等全甲长枪局。”", type: "team" },
+                { t: "一个人强起去偷人，试图打出突破口。", type: "aggressive" },
+                { t: "继续起鸟狙，相信自己的神经枪。", type: "sniper" },
+                { t: "直接发起投降投票，光速放弃。", type: "troll" }
+            ]},
+            { q: "买枪时间结束，你发现多买了一把AK：", options: [
+                { t: "扔给最需要翻盘的突破手队友。", type: "team" },
+                { t: "扔给对面的尸体上（嘲讽）。", type: "troll" },
+                { t: "留在家里，万一这局保枪下局还能用。", type: "steady" },
+                { t: "想扔给队友，结果扔到了高高的屋顶上拿不下来。", type: "piggy" }
+            ]},
+            { q: "你被对面的老六（蹲坑）连杀了两次：", options: [
+                { t: "记住位置，下次提早预瞄和给燃烧弹。", type: "tactical" },
+                { t: "比他更六，我不出去了，看谁更能蹲！", type: "lone" },
+                { t: "直接开启暴走模式，拿冲锋枪去找他拼命。", type: "pp19" },
+                { t: "第三次又死在同一个地方，欲哭无泪。", type: "piggy" }
+            ]},
+            { q: "进攻时，队友丢了一颗完美的封门烟：", options: [
+                { t: "趁着烟雾弹没散，从烟雾边缘闪身出去抓人。", type: "aggressive" },
+                { t: "躲在烟雾后面丢闪光，配合队友同步出击。", type: "team" },
+                { t: "隔着烟雾一顿盲狙，竟然穿死两个。", type: "forsaken" },
+                { t: "直接大步流星走进烟雾里，迷失方向被混死。", type: "piggy" }
+            ]},
+            { q: "当你的准星瞄准敌人的头部时：", options: [
+                { t: "单发点射，追求一击必杀的艺术。", type: "all" },
+                { t: "瞬间下蹲压枪，保证子弹全在身上。", type: "steady" },
+                { t: "习惯性按下右键打开了开镜模式（如果是狙）。", type: "sniper" },
+                { t: "手一抖，子弹全打在了天花板上。", type: "piggy" }
+            ]},
+            { q: "对于“身法（Movement）”的理解：", options: [
+                { t: "完美掌握急停，开枪瞬间静止，弹无虚发。", type: "all" },
+                { t: "各种连跳（Bhop）、空飞，像泥鳅一样难打。", type: "troll" },
+                { t: "只用静步和静蹲，绝对不暴露一点声音。", type: "lone" },
+                { t: "爬梯子经常摔下来掉血。", type: "piggy" }
+            ]},
+            { q: "T阵营，距离回合结束只有20秒，还没下包：", options: [
+                { t: "指挥带包队友赶紧去最近的包点，自己断后。", type: "tactical" },
+                { t: "拿起P90带领全队发起了决死冲锋。", type: "pp19" },
+                { t: "保什么枪？直接全甲找对面刚枪去了！", type: "aggressive" },
+                { t: "带着C包在地图另外一端发呆，回合超时判定输。", type: "piggy" }
+            ]},
+            { q: "你认为什么样的主播最合你胃口？", options: [
+                { t: "分析战术、讲课、教学道具的技术流。", type: "tactical" },
+                { t: "拿着狙击枪秀操作，疯狂甩狙的集锦流。", type: "sniper" },
+                { t: "整活不断，节目效果拉满的娱乐主播。", type: "troll" },
+                { t: "被对面打自闭，砸键盘的暴躁老哥。", type: "aggressive" }
+            ]},
+            { q: "遇到对面全起大狙防守：", options: [
+                { t: "用烟雾弹把他们的枪线全部封死。", type: "tactical" },
+                { t: "我也起狙！对狙不赢不配玩！", type: "sniper" },
+                { t: "从地下道或者小路摸过去，绕开大长管。", type: "lone" },
+                { t: "勇敢地跳出去吸引火力，然后瞬间暴毙。", type: "piggy" }
+            ]},
+            { q: "防守方，听到匪徒已经在安放C4了：", options: [
+                { t: "从最近的通道快速跑过去抓下包 Timing。", type: "aggressive" },
+                { t: "静步靠过去，听信息等待队友汇合一起打回防。", type: "steady" },
+                { t: "隔着墙/箱子一顿穿射，强行把下包的人穿死。", type: "forsaken" },
+                { t: "手滑切出了燃烧弹扔在自己脚下，阻断了自己的路。", type: "piggy" }
+            ]},
+            { q: "你拆除C4（拆包）的风格是：", options: [
+                { t: "必须先清完所有点位，确保没人再安全拆。", type: "steady" },
+                { t: "扔个烟雾弹直接强拆，队友帮架枪。", type: "team" },
+                { t: "点一下雷包立刻放开，掏枪反杀拉出来的人。", type: "tactical" },
+                { t: "没有钳子，对着C4看了10秒被炸上天。", type: "piggy" }
+            ]},
+            { q: "当你用手枪局打赢了长枪局：", options: [
+                { t: "在公屏打字：“Ez” 或者发个问号“？”", type: "troll" },
+                { t: "捡起对面的AK/大狙，美滋滋地保枪。", type: "steady" },
+                { t: "继续买P90/吹风机，恶心对面到底。", type: "pp19" },
+                { t: "“啊？刚才那个人拿的是AK吗？我以为是ECO局。”", type: "piggy" }
+            ]},
+            { q: "如果CS2要删除一把武器，你最不想看到谁消失？", options: [
+                { t: "AK47，男人的浪漫，爆头的快感。", type: "all" },
+                { t: "AWP，一枪制敌的魅力无法替代。", type: "sniper" },
+                { t: "P90，这是我的本命神器啊！", type: "pp19" },
+                { t: "电击枪！没有它游戏失去了灵魂。", type: "troll" }
+            ]},
+            { q: "残局处理时，你最依赖的是：", options: [
+                { t: "精湛的枪法和预瞄习惯。", type: "all" },
+                { t: "超乎常人的意识和地图理解。", type: "tactical" },
+                { t: "对面失误，不小心露出破绽。", type: "steady" },
+                { t: "运气好，闭着眼睛瞎开火爆头了。", type: "piggy" }
+            ]},
+            { q: "你在队伍中的语音交流通常是：", options: [
+                { t: "简洁明了：“A大两个，残血。”", type: "team" },
+                { t: "除了报点一言不发，像个冷酷杀手。", type: "lone" },
+                { t: "大吼大叫：“Rush！冲冲冲！别停啊！”", type: "aggressive" },
+                { t: "“哎呀我死了...等下，我刚刚在哪死的来着？”", type: "piggy" }
+            ]},
+            { q: "遇到一个明显的作弊者（陀螺/锁头）：", options: [
+                { t: "全队躲在出生点不出去，保枪拖时间等结束。", type: "steady" },
+                { t: "开挂是吧？看我起大狙穿门抽你！", type: "forsaken" }, // fighting fire with fire
+                { t: "尝试用非常规点位和闪光弹强行打他一个侧身。", type: "tactical" },
+                { t: "跑出去找他理论，结果不停地被秒杀复活秒杀。", type: "piggy" }
+            ]},
+            { q: "如何评价自己的“压枪”水平？", options: [
+                { t: "前10发稳如老狗，后20发也能控制在弹道内。", type: "all" },
+                { t: "压什么枪，一枪头就完事了。", type: "aggressive" },
+                { t: "反正我用冲锋枪/大狙，不需要背步枪弹道。", type: "pp19" },
+                { t: "前两发在人身上，后面的全打在云彩上了。", type: "piggy" }
+            ]},
+            { q: "关于买甲（防弹衣）：", options: [
+                { t: "必须全甲！没有头盔就没有安全感。", type: "steady" },
+                { t: "没钱就半甲，只要头不被打烂就行。", type: "team" },
+                { t: "无甲大狙，极致的玻璃大炮。", type: "sniper" },
+                { t: "经常忘了买甲，光着身子就冲出去了。", type: "piggy" }
+            ]},
+            { q: "单排匹配遇到不会说中文的老外：", options: [
+                { t: "用流利的英文或基础报点词汇无缝交流。", type: "team" },
+                { t: "直接静音，反正我都是自己玩自己的。", type: "lone" },
+                { t: "用拼音或者蹩脚的“Hello A A A”疯狂喊叫。", type: "pp19" },
+                { t: "对着他发语音卖萌，虽然对方听不懂。", type: "piggy" }
+            ]},
+            { q: "当你作为自由人绕后，看到三个敌人的背身：", options: [
+                { t: "冷静瞄准，从最后一个开始一个个爆头。", type: "all" },
+                { t: "兴奋地直接扫射，结果马枪（压枪失误）被反杀。", type: "aggressive" },
+                { t: "掏出刀子，想尝试一次史诗级的三连刀杀。", type: "troll" },
+                { t: "不敢开枪，怕打不过，看着他们走过去...", type: "piggy" }
+            ]},
+            { q: "你觉得影响你上分的最大障碍是：", options: [
+                { t: "队友不交流，不配合。", type: "team" },
+                { t: "对面的挂太多了，这游戏没法玩。", type: "forsaken" },
+                { t: "运气太差，总是被离谱的跑打爆头。", type: "steady" },
+                { t: "我自己确实有点菜，经常白给发呆。", type: "piggy" }
+            ]},
+            { q: "队友掉线，4打5的局面：", options: [
+                { t: "接管指挥，安排更紧凑的防守和抱团进攻。", type: "tactical" },
+                { t: "变成独狼，在地图各处施加压力，牵扯精力。", type: "lone" },
+                { t: "把经济全用来买狙，利用远距离优势补足人数差。", type: "sniper" },
+                { t: "我负责在家里挂机发枪，做个移动ATM。", type: "piggy" }
+            ]},
+            { q: "拿到首杀（First Blood）后你会：", options: [
+                { t: "继续前压，把对面的防线彻底撕裂！", type: "aggressive" },
+                { t: "立刻退回安全区，建立人数优势慢慢打。", type: "steady" },
+                { t: "喷个漆，检视一下武器，装个杯。", type: "troll" },
+                { t: "按到了截图键，卡顿了一下被补枪打死了。", type: "piggy" }
+            ]},
+            { q: "你的常用准星（Crosshair）是：", options: [
+                { t: "一个小绿点，或者极小的十字准星。", type: "all" },
+                { t: "动态大准星，跑动会扩大的那种。", type: "steady" },
+                { t: "只用默认准星，懒得调，能瞄人就行。", type: "team" },
+                { t: "巨大圆圈或者极度离谱的搞怪准星。", type: "troll" }
+            ]},
+            { q: "对于“丢枪给大哥”这件事：", options: [
+                { t: "我就是大哥，给我发把AK，带你们飞！", type: "aggressive" },
+                { t: "只要能赢，让我全场打辅助起手枪发枪都行。", type: "team" },
+                { t: "我自己拿狙才能发挥，谁也不发。", type: "sniper" },
+                { t: "想发AK给大哥，结果按错买成了连狙被骂。", type: "piggy" }
+            ]},
+            { q: "最后一题，你热爱 CS 的理由是：", options: [
+                { t: "纯粹的竞技性，享受变强和战胜对手的过程。", type: "all" },
+                { t: "和兄弟们一起开黑、研究战术的快乐时光。", type: "team" },
+                { t: "开箱子！炼金！我要出暗金咆哮！", type: "troll" },
+                { t: "哪怕当个小笨蛋一直死，我也觉得这游戏好玩！", type: "piggy" }
+            ]}
+        ];
+
+        // Ensure exactly 50 questions
+        const questions = questionData.slice(0, 50);
+
+        // --- ROLE DESCRIPTIONS ---
+        const roleData = {
+            aggressive: { name: "突破手 (Entry Fragger)", desc: "你就像一头猛虎。永远冲在最前面，为了撕裂对面的防线不惜一切代价。你的字典里没有退缩，只有首杀或者首死。" },
+            steady: { name: "稳健达人 (Anchor)", desc: "残局大师！你不贪枪，不盲目冲锋。防守时你是最坚固的盾，残局时你是全村的希望。只要你活着，就还有翻盘的可能。" },
+            team: { name: "团队大脑 (IGL/Support)", desc: "比起华丽的杀戮，你更享受掌控全局。你熟悉各种道具，善于沟通。没有你的调度，再猛的枪男也只是一盘散沙。" },
+            lone: { name: "自由人 (Lurker)", desc: "你是黑暗中的刺客。永远不在主战场，总是从敌人意想不到的地方出现，打乱他们的回防节奏。你的存在让对手如芒在背。" },
+            tactical: { name: "战术大师 (Tactician)", desc: "道具覆盖，假打转点。你把这款射击游戏玩成了策略游戏。你喜欢用智商碾压对手，而不是单纯的拼反应。" },
+            troll: { name: "整活带师 (Entertainer)", desc: "分可以掉，活不能停！电击枪、刀人、奇怪的走位和喊话。你是队伍里的气氛组，有你的局永远不会无聊。" },
+            sniper: { name: "致命狙神 (AWPer)", desc: "给我一把大狙，还你一个奇迹。你对地图的过点和Timing有敏锐的直觉，一枪制敌是你的艺术追求。" },
+            pp19: { name: "牛战士/冲锋型 (Run & Gun)", desc: "RUSH B！P90！吹风机！不讲理的跑打是你的信仰，用火力压制一切花里胡哨的战术，主打一个乱拳打死老师傅。" },
+            all: { name: "六边形战士 (All-Rounder)", desc: "你就是完美无瑕的 CS 机器。步枪、狙击、道具、意识全能。不论什么位置你都能打出极高的水准，完美！" },
+            forsaken: { name: "世一开 (Suspect)", desc: "你的枪法离谱到让人怀疑人生，各种隔墙穿射和神经枪。对面看你的视角一定在疯狂点举报。如果是纯绿玩，那你太可怕了。" },
+            piggy: { name: "小笨蛋猪猪 (Piggy)", desc: "全场最可爱的迷路宝贝！闪白队友、自己烧自己、找不着北、人体描边。虽然战绩可能不好看，但你的呆萌给兄弟们带来了无数欢乐（或者血压）！" }
+        };
+
+        // --- STATE MANAGEMENT ---
+        let currentQIndex = 0;
+        let scores = { aggressive:0, steady:0, team:0, lone:0, tactical:0, troll:0, sniper:0, pp19:0, all:0, forsaken:0, piggy:0 };
+
+        // --- LOGIC FUNCTIONS ---
+        function startQuiz() {
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-quiz').classList.remove('hidden');
+            renderQuestion();
+        }
+
+        function renderQuestion() {
+            if (currentQIndex >= questions.length) {
+                showResults();
+                return;
+            }
+
+            const q = questions[currentQIndex];
+            document.getElementById('question-counter').innerText = `${currentQIndex + 1} / ${questions.length}`;
+            document.getElementById('question-text').innerText = q.q;
+            
+            // Progress bar
+            const progress = ((currentQIndex) / questions.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+
+            // Shuffle options for better UX
+            const shuffledOptions = [...q.options].sort(() => Math.random() - 0.5);
+
+            shuffledOptions.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "option-btn w-full text-left bg-slate-700/50 hover:bg-slate-600 text-white p-4 rounded-lg border border-slate-600 mb-3 transition-colors duration-200 shadow hover:shadow-lg";
+                btn.innerHTML = `<span class="text-yellow-500 font-bold mr-2">▶</span> ${opt.t}`;
+                btn.onclick = () => handleAnswer(opt.type);
+                optionsContainer.appendChild(btn);
+            });
+        }
+
+        function handleAnswer(type) {
+            scores[type]++;
+            currentQIndex++;
+            renderQuestion();
+        }
+
+        function showResults() {
+            document.getElementById('screen-quiz').classList.add('hidden');
+            document.getElementById('screen-result').classList.remove('hidden');
+
+            // Find max score
+            let maxType = 'piggy'; // Default fallback
+            let maxVal = -1;
+            for (const [type, val] of Object.entries(scores)) {
+                if (val > maxVal) {
+                    maxVal = val;
+                    maxType = type;
+                }
+            }
+
+            // Fallback rules: If piggy has high score but not top, maybe force piggy for fun if they chose it > 10 times?
+            if (scores['piggy'] >= 10 && maxType !== 'piggy') {
+                maxType = 'piggy'; // Override logic for the hidden Piggy role
+            }
+
+            const role = roleData[maxType];
+            
+            // Icon mapping
+            const iconMap = { aggressive:'🔥', steady:'🛡️', team:'🧠', lone:'🥷', tactical:'🗺️', troll:'🤡', sniper:'🎯', pp19:'🏃💨', all:'🌟', forsaken:'🤖', piggy:'🐷' };
+
+            document.getElementById('result-icon').innerText = iconMap[maxType] || '🏆';
+            document.getElementById('result-title').innerText = role.name;
+            document.getElementById('result-desc').innerText = role.desc;
+
+            drawChart();
+        }
+
+        function drawChart() {
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            
+            // Prepare data for chart
+            const labels = ["突破", "稳健", "团队", "老六", "战术", "整活", "狙击", "冲锋", "全能", "可疑", "猪猪"];
+            const dataMap = [
+                scores.aggressive, scores.steady, scores.team, scores.lone, scores.tactical, 
+                scores.troll, scores.sniper, scores.pp19, scores.all, scores.forsaken, scores.piggy
+            ];
+
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '能力维度',
+                        data: dataMap,
+                        backgroundColor: 'rgba(234, 179, 8, 0.2)', // Tailwind Yellow-500 with opacity
+                        borderColor: 'rgba(234, 179, 8, 1)',
+                        pointBackgroundColor: 'rgba(249, 115, 22, 1)', // Tailwind Orange-500
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(249, 115, 22, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: {
+                                color: '#cbd5e1', // Slate-300
+                                font: { size: 12, family: "'Segoe UI', sans-serif" }
+                            },
+                            ticks: {
+                                display: false, // Hide numeric values on rings
+                                min: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
